@@ -167,3 +167,68 @@ export function loadAgentTypes(settings: Pick<Settings, "pluginRoot">): Map<stri
   }
   return types;
 }
+
+const nativeModelsConfig = Type.Intersect([modelsConfig, Type.Object({
+  defaultEffort: Type.String(),
+  tiers: Type.Record(Type.String(), Type.Union([Type.String(), Type.Array(Type.String())])),
+  roles: Type.Array(Type.Object({ role: Type.String(), models: Type.String() })),
+})]);
+
+function readNativeModels(modelsFile: string): Static<typeof nativeModelsConfig> {
+  const raw: unknown = JSON.parse(readFileSync(modelsFile, "utf8"));
+  if (!Value.Check(nativeModelsConfig, raw)) throw new Error(`${modelsFile} is not a pstack native routing configuration`);
+  return raw;
+}
+
+export interface NativeParent {
+  model?: string;
+  effort?: string;
+}
+
+function sheetValue(sheet: Sheet | undefined, key: string): string | undefined {
+  let value: string | undefined;
+  for (const line of sheet?.text.replace(/^\uFEFF/, "").split(/\r?\n/) ?? []) {
+    if (line.startsWith(`${key}:`)) value = line.slice(key.length + 1).trim();
+  }
+  return value;
+}
+
+// Native dispatch ignores top-level thinking; always forward the resolved suffix.
+export function resolveNativeModel(
+  requested: string | undefined,
+  settings: Settings,
+  sheet: Sheet | undefined,
+  parent: NativeParent,
+): string {
+  const match = /^(\S+)(?:\s+@(\w+))?$/.exec(requested ?? "inherit-parent");
+  if (!match) throw new Error("Malformed model/effort value");
+  const [, token, roleEffort] = match;
+  const parts = token.split(":");
+  if (parts.length > 2) throw new Error("Malformed model suffix");
+  const [modelToken, suffix] = parts;
+  const model = resolveModel(modelToken, settings, sheet, parent.model);
+  if (!model) throw new Error("Native model resolution requires the actual parent model");
+  const resolved = model.split(":");
+  if (resolved.length > 2 || !/^[^\s/:,@]+\/[^\s:,@]+$/.test(resolved[0])) throw new Error("Expected provider/model-id");
+  const defaultEffort = sheetValue(sheet, "default effort") ??
+    readNativeModels(settings.modelsFile).defaultEffort;
+  const validate = (value: string): string => value === "session" ? value : checkEffort(value, settings);
+  validate(defaultEffort);
+  if (roleEffort) validate(roleEffort);
+  const effort = suffix !== undefined ? checkEffort(suffix, settings) :
+    resolved[1] !== undefined ? checkEffort(resolved[1], settings) : roleEffort ?? defaultEffort;
+  const thinking = effort === "session" ? parent.effort : effort;
+  if (!thinking || !["off", "minimal", ...readModels(settings.modelsFile).efforts].includes(thinking)) {
+    throw new Error("Native effort resolution requires the actual parent thinking level");
+  }
+  return `${resolved[0]}:${thinking}`;
+}
+
+export function resolveNativeRoles(settings: Settings, sheet: Sheet | undefined, parent: NativeParent): Map<string, string[]> {
+  const config = readNativeModels(settings.modelsFile);
+  return new Map(config.roles.map(({ role, models }) => {
+    const override = sheetValue(sheet, role);
+    const values = override === undefined ? [config.tiers[models]].flat() : override.split(",").map(value => value.trim());
+    return [role, values.map(value => resolveNativeModel(value, settings, sheet, parent))];
+  }));
+}

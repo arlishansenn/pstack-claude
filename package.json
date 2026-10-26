@@ -39,11 +39,19 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
-    "typebox": "*"
+    "typebox": "*",
+    "pi-subagents": "0.82.1"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-coding-agent": {
       "optional": true
+    },
+    "pi-subagents": {
+      "optional": true
     }
+  },
+  "devDependencies": {
+    "pi-subagents": "0.82.1",
+    "@earendil-works/pi-coding-agent": "1.4.0"
   }
 }

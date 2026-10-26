@@ -153,10 +153,10 @@ jobs:
       # this repository's dependency scans.
       - name: Install Pi
         run: npm install -g --ignore-scripts --before=2026-10-11 @earendil-works/pi-coding-agent@1.1.0 # zizmor: ignore[adhoc-packages]
-      - name: Typecheck the extension against Pi
-        run: bun tools/typecheck-pi.mjs
       - name: Install test dependencies
         run: bun install --frozen-lockfile
+      - name: Typecheck the extension against Pi
+        run: bun tools/typecheck-pi.mjs
       # These checks make no model calls. Missing Pi fails instead of skipping.
       - name: Check the model catalog and child startup against Pi
         run: bun test tests/pi/catalog.test.mjs tests/pi/runtime.test.mjs
